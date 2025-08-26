@@ -1,12 +1,27 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Switch, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { observer } from '@legendapp/state/react';
 import { Globe, Bell, Trash2, ChevronRight } from 'lucide-react-native';
 import { commuteStore$ } from '@/stores/commuteStore';
-import { colors, spacing, textStyles, borderRadius, shadows } from '@/config/styles';
+import {
+  colors,
+  spacing,
+  textStyles,
+  borderRadius,
+  shadows,
+} from '@/config/styles';
+import Purchases from 'react-native-purchases/dist/purchases';
+import { CustomerInfo } from 'react-native-purchases';
+import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 
-const SettingItem = ({ icon: Icon, title, subtitle, onPress, rightElement }: {
+const SettingItem = ({
+  icon: Icon,
+  title,
+  subtitle,
+  onPress,
+  rightElement,
+}: {
   icon: any;
   title: string;
   subtitle?: string;
@@ -56,13 +71,52 @@ const SettingItem = ({ icon: Icon, title, subtitle, onPress, rightElement }: {
       </View>
       <View style={$right}>
         {rightElement}
-        {onPress && <ChevronRight size={20} color={colors.text.secondary} strokeWidth={2} />}
+        {onPress && (
+          <ChevronRight
+            size={20}
+            color={colors.text.secondary}
+            strokeWidth={2}
+          />
+        )}
       </View>
     </Component>
   );
 };
 
 export default observer(function SettingsTab() {
+  const [revenueCatCustomerInfo, setRevenueCatCustomerInfo] =
+    useState<CustomerInfo | null>(null);
+
+  const hasPro = !!revenueCatCustomerInfo?.entitlements.active['Pro'];
+
+  useEffect(() => {
+    (async function doStuff() {
+      const customerInfo = await Purchases.getCustomerInfo();
+      setRevenueCatCustomerInfo(customerInfo);
+    })();
+  }, []);
+
+  async function presentPaywall(): Promise<boolean> {
+    // Present paywall for current offering:
+    const paywallResult: PAYWALL_RESULT = await RevenueCatUI.presentPaywall();
+
+    switch (paywallResult) {
+      case PAYWALL_RESULT.NOT_PRESENTED:
+      case PAYWALL_RESULT.ERROR:
+      case PAYWALL_RESULT.CANCELLED:
+        return false;
+      case PAYWALL_RESULT.PURCHASED:
+      case PAYWALL_RESULT.RESTORED:
+        (async function doStuff() {
+          const customerInfo = await Purchases.getCustomerInfo();
+          setRevenueCatCustomerInfo(customerInfo);
+        })();
+        return true;
+      default:
+        return false;
+    }
+  }
+
   const settings = commuteStore$.settings.get();
 
   const toggleUnits = () => {
@@ -117,11 +171,15 @@ export default observer(function SettingsTab() {
 
         <View style={$section}>
           <Text style={$sectionTitle}>Preferences</Text>
-          
+
           <SettingItem
             icon={Globe}
             title="Units"
-            subtitle={`Currently using ${settings.units === 'imperial' ? 'Imperial (miles)' : 'Metric (kilometers)'}`}
+            subtitle={`Currently using ${
+              settings.units === 'imperial'
+                ? 'Imperial (miles)'
+                : 'Metric (kilometers)'
+            }`}
             onPress={toggleUnits}
           />
 
@@ -134,7 +192,11 @@ export default observer(function SettingsTab() {
                 value={settings.notifications.weekdayReminders}
                 onValueChange={toggleNotifications}
                 trackColor={{ false: colors.border, true: colors.eco + '40' }}
-                thumbColor={settings.notifications.weekdayReminders ? colors.eco : colors.text.light}
+                thumbColor={
+                  settings.notifications.weekdayReminders
+                    ? colors.eco
+                    : colors.text.light
+                }
               />
             }
           />
@@ -142,7 +204,7 @@ export default observer(function SettingsTab() {
 
         <View style={$section}>
           <Text style={$sectionTitle}>Data</Text>
-          
+
           <SettingItem
             icon={Trash2}
             title="Clear All Data"
@@ -150,6 +212,27 @@ export default observer(function SettingsTab() {
             onPress={clearAllData}
             rightElement={null}
           />
+        </View>
+        <View style={$section}>
+          <Text style={$sectionTitle}>Premium Features</Text>
+
+          {hasPro ? (
+            <SettingItem
+              icon={Trash2}
+              title="You have I Didn't Park Pro!"
+              subtitle="Enjoy premium features"
+              onPress={() => {}}
+              rightElement={null}
+            />
+          ) : (
+            <SettingItem
+              icon={Trash2}
+              title="Upgrade to Pro"
+              subtitle="Unlock enhanced stats and macros"
+              onPress={presentPaywall}
+              rightElement={null}
+            />
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
